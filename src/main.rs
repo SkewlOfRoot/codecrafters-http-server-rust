@@ -17,7 +17,7 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream) {
     let request = read_request(&mut stream).unwrap();
-    //println!("REQUEST:\r\n{:#?}", request);
+    println!("REQUEST:\r\n{:#?}", request);
 
     let response = generate_response(&request);
     write_response(stream, response);
