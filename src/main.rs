@@ -8,10 +8,16 @@ fn main() {
         match stream {
             Ok(mut _stream) => {
                 let request = read_request(&mut _stream).unwrap();
-                let response = match request.request_path.as_str() {
-                    "/" => HttpResponse::ok(),
-                    _ => HttpResponse::not_found(),
-                };
+
+                let response: HttpResponse;
+                if request.request_path == "/" {
+                    response = HttpResponse::ok(None);
+                } else if request.request_path.starts_with("/echo") {
+                    let value = request.request_path.split('/').last().unwrap();
+                    response = HttpResponse::ok(Some(value.to_string()));
+                } else {
+                    response = HttpResponse::not_found()
+                }
 
                 println!("{:#?}", request);
                 write_response(_stream, response);
@@ -89,6 +95,8 @@ impl HttpRequestType {
 struct HttpResponse {
     version: String,
     status_code: HttpStatusCode,
+    headers: Vec<HttpHeader>,
+    body: Option<String>,
 }
 
 struct HttpStatusCode {
@@ -96,14 +104,48 @@ struct HttpStatusCode {
     description: String,
 }
 
+struct HttpHeader {
+    name: String,
+    value: String,
+}
+
+impl HttpHeader {
+    fn new(name: &str, value: &str) -> HttpHeader {
+        HttpHeader {
+            name: String::from(name),
+            value: String::from(value),
+        }
+    }
+
+    fn output(self) -> String {
+        format!("{}: {}", self.name, self.value)
+    }
+}
+
 impl HttpResponse {
-    fn ok() -> HttpResponse {
+    fn ok(body: Option<String>) -> HttpResponse {
+        let content_length: usize;
+
+        if let Some(b) = &body {
+            content_length = b.len();
+        } else {
+            content_length = 0;
+        }
+
+        let mut headers: Vec<HttpHeader> = vec![HttpHeader::new("Content-Type", "text/plain")];
+        headers.push(HttpHeader::new(
+            "Content-Length",
+            content_length.to_string().as_str(),
+        ));
+
         HttpResponse {
             version: String::from("HTTP/1.1"),
             status_code: HttpStatusCode {
                 status_code: 200,
                 description: String::from("OK"),
             },
+            headers,
+            body,
         }
     }
 
@@ -114,15 +156,29 @@ impl HttpResponse {
                 status_code: 404,
                 description: String::from("Not Found"),
             },
+            headers: Vec::new(),
+            body: None,
         }
     }
 
     fn output(self) -> Vec<u8> {
-        format!(
-            "{} {} {}\r\n\r\n",
+        let mut response_lines: Vec<String> = vec![format!(
+            "{} {} {}",
             self.version, self.status_code.status_code, self.status_code.description
-        )
-        .as_bytes()
-        .to_vec()
+        )];
+
+        for header in self.headers {
+            response_lines.push(header.output())
+        }
+
+        let mut response_str = response_lines.join("\r\n");
+        response_str.push_str("\r\n\r\n");
+
+        if self.body.is_some() {
+            response_str.push_str(self.body.unwrap().as_str());
+        }
+
+        println!("{}", response_str);
+        response_str.as_bytes().to_vec()
     }
 }
