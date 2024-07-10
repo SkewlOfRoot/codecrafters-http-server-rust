@@ -3,28 +3,29 @@ use std::net::{TcpListener, TcpStream};
 
 use itertools::Itertools;
 
+use http_server_starter_rust::ThreadPool;
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+    let pool = ThreadPool::new(8);
 
     for stream in listener.incoming() {
-        match stream {
-            Ok(mut _stream) => {
-                let request = read_request(&mut _stream).unwrap();
-                println!("REQUEST:\r\n{:#?}", request);
-
-                let response = generate_response(&request);
-                write_response(_stream, response);
-            }
-            Err(e) => {
-                eprintln!("error: {}", e);
-            }
-        }
+        let stream = stream.unwrap();
+        pool.execute(|| handle_connection(stream));
     }
 }
 
-fn read_request(_stream: &mut TcpStream) -> Result<HttpRequest, String> {
+fn handle_connection(mut stream: TcpStream) {
+    let request = read_request(&mut stream).unwrap();
+    //println!("REQUEST:\r\n{:#?}", request);
+
+    let response = generate_response(&request);
+    write_response(stream, response);
+}
+
+fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     let mut read_buff = [0; 1024];
-    match _stream.read(&mut read_buff) {
+    match stream.read(&mut read_buff) {
         Ok(bytes_read) => {
             if let Ok(request) = String::from_utf8(read_buff[..bytes_read].to_vec()) {
                 Ok(HttpRequest::from_str(&request))
@@ -73,8 +74,8 @@ fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
     }
 }
 
-fn write_response(mut _stream: TcpStream, response: HttpResponse) {
-    _stream
+fn write_response(mut stream: TcpStream, response: HttpResponse) {
+    stream
         .write_all(&response.output())
         .expect("Failed to write to stream");
 }
