@@ -82,7 +82,7 @@ fn write_response(mut stream: TcpStream, response: HttpResponse) {
 
 #[derive(Debug)]
 struct HttpRequest {
-    request_type: HttpRequestType,
+    _request_type: HttpRequestType,
     request_path: String,
     headers: Vec<HttpHeader>,
 }
@@ -115,7 +115,7 @@ impl HttpRequest {
         }
 
         HttpRequest {
-            request_type: HttpRequestType::from_str(values.next().unwrap()).unwrap(),
+            _request_type: HttpRequestType::from_str(values.next().unwrap()).unwrap(),
             request_path: values.next().unwrap().to_string(),
             headers,
         }
