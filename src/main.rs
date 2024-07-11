@@ -183,7 +183,7 @@ impl HttpStatusCode {
         match self {
             HttpStatusCode::Ok => HttpStatus {
                 code: 200,
-                description: "Ok",
+                description: "OK",
             },
             HttpStatusCode::NotFound => HttpStatus {
                 code: 404,
