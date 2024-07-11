@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
@@ -45,6 +46,8 @@ fn generate_response(request: &HttpRequest) -> HttpResponse {
         response = gen_echo_response(request);
     } else if request.request_path == "/user-agent" {
         response = gen_user_agent_response(request);
+    } else if request.request_path.starts_with("/files") {
+        response = gen_files_response(request);
     } else {
         response = HttpResponse::not_found()
     }
@@ -69,6 +72,23 @@ fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
     let user_agent = collect_vec.first();
     if let Some(u) = user_agent {
         HttpResponse::ok(Some(String::from(&u.value)))
+    } else {
+        HttpResponse::not_found()
+    }
+}
+
+fn gen_files_response(request: &HttpRequest) -> HttpResponse {
+    let value = request.request_path.split('/').last().unwrap();
+
+    let file_content = fs::read_to_string(format!("./src/files/{}", value));
+
+    if let Ok(content) = file_content {
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::Ok)
+            .content_type("application/octet-stream")
+            .body(&content)
+            .build()
+            .unwrap()
     } else {
         HttpResponse::not_found()
     }
@@ -141,14 +161,34 @@ impl HttpRequestType {
 
 struct HttpResponse {
     version: String,
-    status_code: HttpStatusCode,
+    status_code: HttpStatus,
     headers: Vec<HttpHeader>,
     body: String,
 }
 
-struct HttpStatusCode {
-    status_code: u16,
-    description: String,
+struct HttpStatus {
+    code: u16,
+    description: &'static str,
+}
+
+enum HttpStatusCode {
+    Ok,
+    NotFound,
+}
+
+impl HttpStatusCode {
+    fn status(&self) -> HttpStatus {
+        match self {
+            HttpStatusCode::Ok => HttpStatus {
+                code: 200,
+                description: "Ok",
+            },
+            HttpStatusCode::NotFound => HttpStatus {
+                code: 404,
+                description: "Not Found",
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -172,41 +212,25 @@ impl HttpHeader {
 
 impl HttpResponse {
     fn ok(body: Option<String>) -> HttpResponse {
-        let body = body.unwrap_or_default();
-
-        let mut headers: Vec<HttpHeader> = vec![HttpHeader::new("Content-Type", "text/plain")];
-        headers.push(HttpHeader::new(
-            "Content-Length",
-            body.len().to_string().as_str(),
-        ));
-
-        HttpResponse {
-            version: String::from("HTTP/1.1"),
-            status_code: HttpStatusCode {
-                status_code: 200,
-                description: String::from("OK"),
-            },
-            headers,
-            body,
-        }
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::Ok)
+            .content_type("text/plain")
+            .body(body.unwrap_or_default().as_str())
+            .build()
+            .unwrap()
     }
 
     fn not_found() -> HttpResponse {
-        HttpResponse {
-            version: String::from("HTTP/1.1"),
-            status_code: HttpStatusCode {
-                status_code: 404,
-                description: String::from("Not Found"),
-            },
-            headers: Vec::new(),
-            body: String::new(),
-        }
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::NotFound)
+            .build()
+            .unwrap()
     }
 
     fn output(self) -> Vec<u8> {
         let mut response_lines: Vec<String> = vec![format!(
             "{} {} {}",
-            self.version, self.status_code.status_code, self.status_code.description
+            self.version, self.status_code.code, self.status_code.description
         )];
 
         for header in self.headers {
@@ -222,5 +246,63 @@ impl HttpResponse {
 
         println!("RESPONSE:\r\n{}", response_str);
         response_str.as_bytes().to_vec()
+    }
+}
+
+struct HttpResponseBuilder {
+    http_version: Option<String>,
+    status_code: Option<HttpStatusCode>,
+    content_type: Option<String>,
+    body: Option<String>,
+}
+
+impl HttpResponseBuilder {
+    fn new() -> Self {
+        HttpResponseBuilder {
+            http_version: None,
+            status_code: None,
+            content_type: None,
+            body: None,
+        }
+    }
+
+    fn status_code(mut self, status_code: HttpStatusCode) -> Self {
+        self.status_code = Some(status_code);
+        self
+    }
+
+    fn content_type(mut self, content_type: &str) -> Self {
+        self.content_type = Some(content_type.to_string());
+        self
+    }
+
+    fn body(mut self, body: &str) -> Self {
+        self.body = Some(String::from(body));
+        self
+    }
+
+    fn build(self) -> Result<HttpResponse, &'static str> {
+        if self.status_code.is_none() {
+            return Err("Status code must be provided.");
+        }
+
+        let body = self.body.unwrap_or_default();
+
+        let mut headers: Vec<HttpHeader> = vec![HttpHeader::new(
+            "Content-Type",
+            self.content_type
+                .unwrap_or(String::from("text/plain"))
+                .as_str(),
+        )];
+        headers.push(HttpHeader::new(
+            "Content-Length",
+            body.len().to_string().as_str(),
+        ));
+        Ok(HttpResponse {
+            version: self.http_version.unwrap_or("HTTP/1.1".to_string()),
+            status_code: self.status_code.unwrap().status(),
+            headers,
+            body,
+        })
     }
 }
