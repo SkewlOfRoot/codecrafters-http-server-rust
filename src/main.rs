@@ -1,6 +1,6 @@
-use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::{env, fs};
 
 use itertools::Itertools;
 
@@ -78,9 +78,11 @@ fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
 }
 
 fn gen_files_response(request: &HttpRequest) -> HttpResponse {
-    let value = request.request_path.split('/').last().unwrap();
+    let env_args: Vec<String> = env::args().collect();
+    let file_dir = env_args[2].clone();
+    let file_name = request.request_path.split('/').last().unwrap();
 
-    let file_content = fs::read_to_string(format!("./src/files/{}", value));
+    let file_content = fs::read_to_string(format!("{}{}", file_dir, file_name));
 
     if let Ok(content) = file_content {
         HttpResponseBuilder::new()
