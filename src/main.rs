@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::{env, fs};
 
 use itertools::Itertools;
@@ -81,18 +82,30 @@ fn gen_files_response(request: &HttpRequest) -> HttpResponse {
     let env_args: Vec<String> = env::args().collect();
     let file_dir = env_args[2].clone();
     let file_name = request.request_path.split('/').last().unwrap();
+    let file_path = Path::new(file_dir.as_str()).join(file_name);
+    match request.request_type {
+        HttpRequestType::Get => {
+            let file_content = fs::read_to_string(file_path);
 
-    let file_content = fs::read_to_string(format!("{}{}", file_dir, file_name));
-
-    if let Ok(content) = file_content {
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::Ok)
-            .content_type("application/octet-stream")
-            .body(&content)
-            .build()
-            .unwrap()
-    } else {
-        HttpResponse::not_found()
+            if let Ok(content) = file_content {
+                HttpResponseBuilder::new()
+                    .status_code(HttpStatusCode::Ok)
+                    .content_type("application/octet-stream")
+                    .body(&content)
+                    .build()
+                    .unwrap()
+            } else {
+                HttpResponse::not_found()
+            }
+        }
+        HttpRequestType::Post => {
+            fs::write(file_path, request.body.as_ref().unwrap()).unwrap();
+            HttpResponseBuilder::new()
+                .status_code(HttpStatusCode::Created)
+                .build()
+                .unwrap()
+        }
+        _ => HttpResponse::not_found(),
     }
 }
 
@@ -104,9 +117,10 @@ fn write_response(mut stream: TcpStream, response: HttpResponse) {
 
 #[derive(Debug)]
 struct HttpRequest {
-    _request_type: HttpRequestType,
+    request_type: HttpRequestType,
     request_path: String,
     headers: Vec<HttpHeader>,
+    body: Option<String>,
 }
 
 #[derive(Debug)]
@@ -136,10 +150,13 @@ impl HttpRequest {
             ))
         }
 
+        let (_, b) = request_str.split_once("\r\n\r\n").unwrap();
+
         HttpRequest {
-            _request_type: HttpRequestType::from_str(values.next().unwrap()).unwrap(),
+            request_type: HttpRequestType::from_str(values.next().unwrap()).unwrap(),
             request_path: values.next().unwrap().to_string(),
             headers,
+            body: Some(b.trim().to_string()),
         }
     }
 }
@@ -175,6 +192,7 @@ struct HttpStatus {
 
 enum HttpStatusCode {
     Ok,
+    Created,
     NotFound,
 }
 
@@ -184,6 +202,10 @@ impl HttpStatusCode {
             HttpStatusCode::Ok => HttpStatus {
                 code: 200,
                 description: "OK",
+            },
+            HttpStatusCode::Created => HttpStatus {
+                code: 201,
+                description: "Created",
             },
             HttpStatusCode::NotFound => HttpStatus {
                 code: 404,
@@ -290,16 +312,22 @@ impl HttpResponseBuilder {
 
         let body = self.body.unwrap_or_default();
 
-        let mut headers: Vec<HttpHeader> = vec![HttpHeader::new(
-            "Content-Type",
-            self.content_type
-                .unwrap_or(String::from("text/plain"))
-                .as_str(),
-        )];
-        headers.push(HttpHeader::new(
-            "Content-Length",
-            body.len().to_string().as_str(),
-        ));
+        let mut headers: Vec<HttpHeader> = Vec::new();
+
+        if !body.is_empty() {
+            headers.push(HttpHeader::new(
+                "Content-Type",
+                self.content_type
+                    .unwrap_or(String::from("text/plain"))
+                    .as_str(),
+            ));
+
+            headers.push(HttpHeader::new(
+                "Content-Length",
+                body.len().to_string().as_str(),
+            ));
+        }
+
         Ok(HttpResponse {
             version: self.http_version.unwrap_or("HTTP/1.1".to_string()),
             status_code: self.status_code.unwrap().status(),
