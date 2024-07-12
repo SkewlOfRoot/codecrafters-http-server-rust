@@ -69,7 +69,7 @@ fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
         .collect_vec();
     let accept_encoding_header = collect_vec.first();
 
-    if accept_encoding_header.is_some_and(|h| h.value.to_lowercase() == "gzip") {
+    if accept_encoding_header.is_some_and(|h| h.value.to_lowercase().contains("gzip")) {
         HttpResponseBuilder::new()
             .status_code(HttpStatusCode::Ok)
             .content_encoding("gzip")
