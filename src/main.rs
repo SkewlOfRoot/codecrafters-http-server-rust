@@ -7,6 +7,8 @@ use itertools::Itertools;
 
 use http_server_starter_rust::ThreadPool;
 
+mod compressor;
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
     let pool = ThreadPool::new(8);
@@ -70,10 +72,12 @@ fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
     let accept_encoding_header = collect_vec.first();
 
     if accept_encoding_header.is_some_and(|h| h.value.to_lowercase().contains("gzip")) {
+        let compressed_value = compressor::gzip_string(value);
+
         HttpResponseBuilder::new()
             .status_code(HttpStatusCode::Ok)
             .content_encoding("gzip")
-            .body(value)
+            .body(compressed_value.as_str())
             .build()
             .unwrap()
     } else {
