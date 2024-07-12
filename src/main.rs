@@ -290,8 +290,11 @@ impl HttpResponse {
         let mut response_str = response_lines.join("\r\n");
         response_str.push_str("\r\n\r\n");
 
+        let mut buffer: Vec<u8> = Vec::from(response_str.as_bytes());
+        buffer.extend(self.body);
+
         println!("RESPONSE:\r\n{}", response_str);
-        response_str.as_bytes().to_vec()
+        buffer
     }
 }
 
