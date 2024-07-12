@@ -3,6 +3,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::{env, fs};
 
+use hex::ToHex;
 use itertools::Itertools;
 
 use http_server_starter_rust::ThreadPool;
@@ -77,7 +78,7 @@ fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
         HttpResponseBuilder::new()
             .status_code(HttpStatusCode::Ok)
             .content_encoding("gzip")
-            .body(compressed_value.as_str())
+            .body_bytes(compressed_value)
             .build()
             .unwrap()
     } else {
@@ -207,7 +208,7 @@ struct HttpResponse {
     version: String,
     status_code: HttpStatus,
     headers: Vec<HttpHeader>,
-    body: String,
+    body: Vec<u8>,
 }
 
 struct HttpStatus {
@@ -289,9 +290,9 @@ impl HttpResponse {
         let mut response_str = response_lines.join("\r\n");
         response_str.push_str("\r\n\r\n");
 
-        if !self.body.is_empty() {
-            response_str.push_str(self.body.as_str());
-        }
+        //if !self.body.is_empty() {
+        //    response_str.push_str(self.body);
+        //}
 
         println!("RESPONSE:\r\n{}", response_str);
         response_str.as_bytes().to_vec()
@@ -304,6 +305,7 @@ struct HttpResponseBuilder {
     content_type: Option<String>,
     content_encoding: Option<String>,
     body: Option<String>,
+    body_bytes: Option<Vec<u8>>,
 }
 
 impl HttpResponseBuilder {
@@ -314,6 +316,7 @@ impl HttpResponseBuilder {
             content_type: None,
             content_encoding: None,
             body: None,
+            body_bytes: None,
         }
     }
 
@@ -337,12 +340,17 @@ impl HttpResponseBuilder {
         self
     }
 
+    fn body_bytes(mut self, body: Vec<u8>) -> Self {
+        self.body_bytes = Some(body);
+        self
+    }
+
     fn build(self) -> Result<HttpResponse, &'static str> {
         if self.status_code.is_none() {
             return Err("Status code must be provided.");
         }
 
-        let body = self.body.unwrap_or_default();
+        let body = self.body_bytes.unwrap_or_default();
 
         let mut headers: Vec<HttpHeader> = Vec::new();
 
