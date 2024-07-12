@@ -59,8 +59,7 @@ fn generate_response(request: &HttpRequest) -> HttpResponse {
 }
 
 fn gen_root_response() -> HttpResponse {
-    HttpResponseBuilder::new()
-        .status_code(HttpStatusCode::Ok)
+    HttpResponseBuilder::new(HttpStatusCode::Ok)
         .build()
         .unwrap()
 }
@@ -78,16 +77,14 @@ fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
     if accept_encoding_header.is_some_and(|h| h.value.to_lowercase().contains("gzip")) {
         let compressed_value = compressor::gzip_string(value);
 
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::Ok)
+        HttpResponseBuilder::new(HttpStatusCode::Ok)
             .content_encoding("gzip")
-            .body_bytes(compressed_value)
+            .body(compressed_value)
             .build()
             .unwrap()
     } else {
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::Ok)
-            .body_bytes(value.as_bytes().to_vec())
+        HttpResponseBuilder::new(HttpStatusCode::Ok)
+            .body(value.as_bytes().to_vec())
             .build()
             .unwrap()
     }
@@ -101,9 +98,8 @@ fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
         .collect_vec();
     let user_agent = collect_vec.first();
     if let Some(u) = user_agent {
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::Ok)
-            .body_bytes(u.value.as_bytes().to_vec())
+        HttpResponseBuilder::new(HttpStatusCode::Ok)
+            .body(u.value.as_bytes().to_vec())
             .build()
             .unwrap()
     } else {
@@ -121,10 +117,9 @@ fn gen_files_response(request: &HttpRequest) -> HttpResponse {
             let file_content = fs::read(file_path);
 
             if let Ok(content) = file_content {
-                HttpResponseBuilder::new()
-                    .status_code(HttpStatusCode::Ok)
+                HttpResponseBuilder::new(HttpStatusCode::Ok)
                     .content_type("application/octet-stream")
-                    .body_bytes(content)
+                    .body(content)
                     .build()
                     .unwrap()
             } else {
@@ -133,8 +128,7 @@ fn gen_files_response(request: &HttpRequest) -> HttpResponse {
         }
         HttpRequestType::Post => {
             fs::write(file_path, request.body.as_ref().unwrap()).unwrap();
-            HttpResponseBuilder::new()
-                .status_code(HttpStatusCode::Created)
+            HttpResponseBuilder::new(HttpStatusCode::Created)
                 .build()
                 .unwrap()
         }
@@ -271,8 +265,7 @@ impl HttpHeader {
 
 impl HttpResponse {
     fn not_found() -> HttpResponse {
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::NotFound)
+        HttpResponseBuilder::new(HttpStatusCode::NotFound)
             .build()
             .unwrap()
     }
@@ -299,27 +292,22 @@ impl HttpResponse {
 }
 
 struct HttpResponseBuilder {
+    status_code: HttpStatusCode,
     http_version: Option<String>,
-    status_code: Option<HttpStatusCode>,
     content_type: Option<String>,
     content_encoding: Option<String>,
-    body_bytes: Option<Vec<u8>>,
+    body: Option<Vec<u8>>,
 }
 
 impl HttpResponseBuilder {
-    fn new() -> Self {
+    fn new(http_status_code: HttpStatusCode) -> Self {
         HttpResponseBuilder {
+            status_code: http_status_code,
             http_version: None,
-            status_code: None,
             content_type: None,
             content_encoding: None,
-            body_bytes: None,
+            body: None,
         }
-    }
-
-    fn status_code(mut self, status_code: HttpStatusCode) -> Self {
-        self.status_code = Some(status_code);
-        self
     }
 
     fn content_type(mut self, content_type: &str) -> Self {
@@ -332,17 +320,13 @@ impl HttpResponseBuilder {
         self
     }
 
-    fn body_bytes(mut self, body: Vec<u8>) -> Self {
-        self.body_bytes = Some(body);
+    fn body(mut self, body: Vec<u8>) -> Self {
+        self.body = Some(body);
         self
     }
 
     fn build(self) -> Result<HttpResponse, &'static str> {
-        if self.status_code.is_none() {
-            return Err("Status code must be provided.");
-        }
-
-        let body = self.body_bytes.unwrap_or_default();
+        let body = self.body.unwrap_or_default();
 
         let mut headers: Vec<HttpHeader> = Vec::new();
 
@@ -368,8 +352,8 @@ impl HttpResponseBuilder {
         }
 
         Ok(HttpResponse {
+            status_code: self.status_code.status(),
             version: self.http_version.unwrap_or("HTTP/1.1".to_string()),
-            status_code: self.status_code.unwrap().status(),
             headers,
             body,
         })
