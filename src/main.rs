@@ -61,7 +61,28 @@ fn gen_root_response() -> HttpResponse {
 
 fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
     let value = request.request_path.split('/').last().unwrap();
-    HttpResponse::ok(Some(value.to_string()))
+
+    let collect_vec = &request
+        .headers
+        .iter()
+        .filter(|h| h.name.to_lowercase() == "accept-encoding")
+        .collect_vec();
+    let accept_encoding_header = collect_vec.first();
+
+    if accept_encoding_header.is_some_and(|h| h.value.to_lowercase() == "gzip") {
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::Ok)
+            .content_encoding("gzip")
+            .body(value)
+            .build()
+            .unwrap()
+    } else {
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::Ok)
+            .body(value)
+            .build()
+            .unwrap()
+    }
 }
 
 fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
@@ -277,6 +298,7 @@ struct HttpResponseBuilder {
     http_version: Option<String>,
     status_code: Option<HttpStatusCode>,
     content_type: Option<String>,
+    content_encoding: Option<String>,
     body: Option<String>,
 }
 
@@ -286,6 +308,7 @@ impl HttpResponseBuilder {
             http_version: None,
             status_code: None,
             content_type: None,
+            content_encoding: None,
             body: None,
         }
     }
@@ -297,6 +320,11 @@ impl HttpResponseBuilder {
 
     fn content_type(mut self, content_type: &str) -> Self {
         self.content_type = Some(content_type.to_string());
+        self
+    }
+
+    fn content_encoding(mut self, content_encoding: &str) -> Self {
+        self.content_encoding = Some(content_encoding.to_string());
         self
     }
 
@@ -315,6 +343,13 @@ impl HttpResponseBuilder {
         let mut headers: Vec<HttpHeader> = Vec::new();
 
         if !body.is_empty() {
+            if self.content_encoding.is_some() {
+                headers.push(HttpHeader::new(
+                    "Content-Encoding",
+                    self.content_encoding.unwrap().as_str(),
+                ));
+            }
+
             headers.push(HttpHeader::new(
                 "Content-Type",
                 self.content_type
