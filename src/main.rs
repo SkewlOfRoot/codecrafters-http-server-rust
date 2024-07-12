@@ -3,7 +3,6 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::{env, fs};
 
-use hex::ToHex;
 use itertools::Itertools;
 
 use http_server_starter_rust::ThreadPool;
@@ -55,11 +54,15 @@ fn generate_response(request: &HttpRequest) -> HttpResponse {
     } else {
         response = HttpResponse::not_found()
     }
+    println!("RESPONSE:\r\n{:#?}", response);
     response
 }
 
 fn gen_root_response() -> HttpResponse {
-    HttpResponse::ok(None)
+    HttpResponseBuilder::new()
+        .status_code(HttpStatusCode::Ok)
+        .build()
+        .unwrap()
 }
 
 fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
@@ -84,7 +87,7 @@ fn gen_echo_response(request: &HttpRequest) -> HttpResponse {
     } else {
         HttpResponseBuilder::new()
             .status_code(HttpStatusCode::Ok)
-            .body(value)
+            .body_bytes(value.as_bytes().to_vec())
             .build()
             .unwrap()
     }
@@ -98,7 +101,11 @@ fn gen_user_agent_response(request: &HttpRequest) -> HttpResponse {
         .collect_vec();
     let user_agent = collect_vec.first();
     if let Some(u) = user_agent {
-        HttpResponse::ok(Some(String::from(&u.value)))
+        HttpResponseBuilder::new()
+            .status_code(HttpStatusCode::Ok)
+            .body_bytes(u.value.as_bytes().to_vec())
+            .build()
+            .unwrap()
     } else {
         HttpResponse::not_found()
     }
@@ -111,13 +118,13 @@ fn gen_files_response(request: &HttpRequest) -> HttpResponse {
     let file_path = Path::new(file_dir.as_str()).join(file_name);
     match request.request_type {
         HttpRequestType::Get => {
-            let file_content = fs::read_to_string(file_path);
+            let file_content = fs::read(file_path);
 
             if let Ok(content) = file_content {
                 HttpResponseBuilder::new()
                     .status_code(HttpStatusCode::Ok)
                     .content_type("application/octet-stream")
-                    .body(&content)
+                    .body_bytes(content)
                     .build()
                     .unwrap()
             } else {
@@ -204,6 +211,7 @@ impl HttpRequestType {
     }
 }
 
+#[derive(Debug)]
 struct HttpResponse {
     version: String,
     status_code: HttpStatus,
@@ -211,6 +219,7 @@ struct HttpResponse {
     body: Vec<u8>,
 }
 
+#[derive(Debug)]
 struct HttpStatus {
     code: u16,
     description: &'static str,
@@ -261,15 +270,6 @@ impl HttpHeader {
 }
 
 impl HttpResponse {
-    fn ok(body: Option<String>) -> HttpResponse {
-        HttpResponseBuilder::new()
-            .status_code(HttpStatusCode::Ok)
-            .content_type("text/plain")
-            .body(body.unwrap_or_default().as_str())
-            .build()
-            .unwrap()
-    }
-
     fn not_found() -> HttpResponse {
         HttpResponseBuilder::new()
             .status_code(HttpStatusCode::NotFound)
@@ -290,10 +290,6 @@ impl HttpResponse {
         let mut response_str = response_lines.join("\r\n");
         response_str.push_str("\r\n\r\n");
 
-        //if !self.body.is_empty() {
-        //    response_str.push_str(self.body);
-        //}
-
         println!("RESPONSE:\r\n{}", response_str);
         response_str.as_bytes().to_vec()
     }
@@ -304,7 +300,6 @@ struct HttpResponseBuilder {
     status_code: Option<HttpStatusCode>,
     content_type: Option<String>,
     content_encoding: Option<String>,
-    body: Option<String>,
     body_bytes: Option<Vec<u8>>,
 }
 
@@ -315,7 +310,6 @@ impl HttpResponseBuilder {
             status_code: None,
             content_type: None,
             content_encoding: None,
-            body: None,
             body_bytes: None,
         }
     }
@@ -332,11 +326,6 @@ impl HttpResponseBuilder {
 
     fn content_encoding(mut self, content_encoding: &str) -> Self {
         self.content_encoding = Some(content_encoding.to_string());
-        self
-    }
-
-    fn body(mut self, body: &str) -> Self {
-        self.body = Some(String::from(body));
         self
     }
 
